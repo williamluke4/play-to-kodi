@@ -71,6 +71,68 @@ chrome.runtime.onMessage.addListener(
     }
 );
 
+//Setup Icon Paths
+var notCompatibleIconPath = chrome.runtime.getURL("images/iconNotCompatible.png");
+var CompatibleIconPath = chrome.runtime.getURL("images/icon.png");
+var allTabs = {}
+
+//Check if the newly Selected Tab is compatible
+chrome.tabs.onActivated.addListener(function(info){
+    chrome.tabs.query({active: true,lastFocusedWindow: true}, function (tab) {
+        var tabURL = tab[0].url;
+        var tabID = tab[0].id;
+
+        //Check if Tab is Compatible
+        checkIfTabIsCompatible(tabURL,tabID);
+    })
+});
+
+//Set needCheck flag to true when Tab Updates and check the updated Tab
+chrome.tabs.onUpdated.addListener(function(tabID, tabChanges, tab){
+    //If the URL didn´t Change there is no need to recheck
+    if(tabChanges.url == null)
+        return;
+    allTabs[tabID] = {needCheck: true, isCompatible: false};
+    var tabURL = tab.url;
+
+    checkIfTabIsCompatible(tabURL, tabID);
+})
+
+function checkIfTabIsCompatible(tabURL, tabID){
+    chrome.tabs.query({active: true,lastFocusedWindow: true}, function (tab) {
+        var currentTabId = tab[0].id;
+
+        //Check if Tab has the required infos
+        if(allTabs[tabID] == null)
+            allTabs[tabID] = {needCheck: true, isCompatible: false};
+
+        //Check if Tab needs to be Checked
+        if(allTabs[tabID].needCheck){
+            allTabs[tabID].isCompatible = false;
+            //console.info("Checking ID", tabID, "Url", tabURL);
+            for (let i = 0; i < allModules.length; i++) {
+                var module = allModules[i];
+                if (module.canHandleUrl(tabURL)){
+                    allTabs[tabID].isCompatible = true;
+                    break;
+                }
+            }
+            allTabs[tabID].needCheck = false;
+        }
+
+        //If the currently selected Tab was checked, update the icon
+        if(tabID == currentTabId)
+            updateAddOnIcon(allTabs[tabID].isCompatible);
+    })
+}
+
+function updateAddOnIcon(isCompatible){
+    if(isCompatible)
+        chrome.browserAction.setIcon({path: CompatibleIconPath});
+    else
+        chrome.browserAction.setIcon({path: notCompatibleIconPath});
+}
+
 /*
  * Called when the context menu item has been created, or when creation failed due to an error.
  * We'll just log success/failure here.
