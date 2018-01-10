@@ -46,8 +46,8 @@ chrome.runtime.onMessage.addListener(
                 });
                 break;
 
-            case 'isDebugLogsEnabled':
-                sendResponse({response: isDebugLogsEnabled()});
+            case 'isDebug':
+                sendResponse({response: isDebug()});
                 break;
 
             case 'createContextMenu':
@@ -62,8 +62,8 @@ chrome.runtime.onMessage.addListener(
                     sendResponse({response: "OK"});
                 })});
                 break;
-            case 'setLogging':
-                debugLogsEnabled = request.enable;
+            case 'setDebug':
+                setDebug(request.enable);
                 break;
         }
 
@@ -71,12 +71,69 @@ chrome.runtime.onMessage.addListener(
     }
 );
 
+//Setup Icon Paths
+var notCompatibleIconPath = chrome.runtime.getURL("images/iconNotCompatible.png");
+var CompatibleIconPath = chrome.runtime.getURL("images/icon.png");
+var allTabs = {}
+
+//Check if the newly Selected Tab is compatible
+chrome.tabs.onActivated.addListener(function(activeInfo){
+    chrome.tabs.get(activeInfo.tabId, function (tab) {
+        //Check if Tab is Compatible
+        checkIfTabIsCompatible(tab.url, tab.id);
+        updateAddOnIcon(allTabs[tab.id].isCompatible);
+    })
+});
+
+//Set needCheck flag to true when Tab Updates and check the updated Tab
+chrome.tabs.onUpdated.addListener(function(tabID, tabChanges, tab){
+    //If the URL didn´t Change there is no need to recheck
+    if(tabChanges.url == null) {
+        return;
+    }
+    allTabs[tabID].needCheck = true;
+
+    chrome.tabs.get(tabID, function (tab) {
+        checkIfTabIsCompatible(tab.url, tabID);
+        updateAddOnIcon(allTabs[tabID].isCompatible);
+    });
+})
+
+function checkIfTabIsCompatible(tabURL, tabID){
+    //Check if Tab has the required infos
+    if(allTabs[tabID] == null) {
+        allTabs[tabID] = {needCheck: true, isCompatible: false};
+    }
+
+    //Check if Tab needs to be Checked
+    if(allTabs[tabID].needCheck){
+        allTabs[tabID].isCompatible = false;
+        //console.info("Checking ID", tabID, "Url", tabURL);
+        for (let i = 0; i < allModules.length; i++) {
+            var module = allModules[i];
+            if (module.canHandleUrl(tabURL)){
+                allTabs[tabID].isCompatible = true;
+                break;
+            }
+        }
+        allTabs[tabID].needCheck = false;
+    }
+}
+
+function updateAddOnIcon(isCompatible){
+    if(isCompatible) {
+        chrome.browserAction.setIcon({path: CompatibleIconPath});
+    } else {
+        chrome.browserAction.setIcon({path: notCompatibleIconPath});
+    }
+}
+
 /*
  * Called when the context menu item has been created, or when creation failed due to an error.
  * We'll just log success/failure here.
  */
 function onContextMenuCreated(n) {
-    if (debugLogsEnabled) {
+    if (isDebug()) {
         if (chrome.runtime.lastError) {
             console.log("Error creating context menu item:" + chrome.runtime.lastError);
         } else {
@@ -295,44 +352,53 @@ function createMagnetAndP2PAndImageContextMenus() {
         }
     }, onContextMenuCreated);
 
-    chrome.contextMenus.create({
-        title: "Play now",
-        contexts: ["link"],
-        targetUrlPatterns: ['magnet:*', 'acestream:*', 'sop:*'],
-        onclick: function (info) {
-            doAction(actions.Stop, function () {
-                clearPlaylist(function () {
-                    queueItem(info.linkUrl, function () {
-                    });
-                })
-            });
-        }
-    }, onContextMenuCreated);
-
-    chrome.contextMenus.create({
-        title: "Queue",
-        contexts: ["link"],
-        targetUrlPatterns: ['magnet:*', 'acestream:*', 'sop:*'],
-        onclick: function (info) {
-            queueItem(info.linkUrl, function () {
-            });
-        }
-    }, onContextMenuCreated);
-
-    chrome.contextMenus.create({
-        title: "Play this Next",
-        contexts: ["link"],
-        targetUrlPatterns: ['magnet:*', 'acestream:*', 'sop:*'],
-        onclick: function (info) {
-            getPlaylistPosition(function (position) {
-                insertItem(info.linkUrl, position + 1, function () {
+    if (!(navigator.userAgent.indexOf("Mozilla") > -1)) {
+        chrome.contextMenus.create({
+            title: "Play now",
+            contexts: ["link"],
+            targetUrlPatterns: ['magnet:*', 'acestream:*', 'sop:*'],
+            onclick: function (info) {
+                doAction(actions.Stop, function () {
+                    clearPlaylist(function () {
+                        queueItem(info.linkUrl, function () {
+                        });
+                    })
                 });
-            });
-        }
-    }, onContextMenuCreated);
+            }
+        }, onContextMenuCreated);
+
+        chrome.contextMenus.create({
+            title: "Queue",
+            contexts: ["link"],
+            targetUrlPatterns: ['magnet:*', 'acestream:*', 'sop:*'],
+            onclick: function (info) {
+                queueItem(info.linkUrl, function () {
+                });
+            }
+        }, onContextMenuCreated);
+
+        chrome.contextMenus.create({
+            title: "Play this Next",
+            contexts: ["link"],
+            targetUrlPatterns: ['magnet:*', 'acestream:*', 'sop:*'],
+            onclick: function (info) {
+                getPlaylistPosition(function (position) {
+                    insertItem(info.linkUrl, position + 1, function () {
+                    });
+                });
+            }
+        }, onContextMenuCreated);
+    }
 }
 
-chrome.contextMenus.removeAll();
-createMagnetAndP2PAndImageContextMenus();
-createHtml5VideoContextMenus();
+getSettings(["enableDebugLogs"]).then(
+    settings => {
+        if (null != settings.enableDebugLogs) {
+            setDebug(settings.enableDebugLogs);
+        }
+
+        chrome.contextMenus.removeAll();
+        createMagnetAndP2PAndImageContextMenus();
+        createHtml5VideoContextMenus();
+    });
 
