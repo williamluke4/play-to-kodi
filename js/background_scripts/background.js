@@ -91,6 +91,8 @@ chrome.tabs.onUpdated.addListener(function(tabID, tabChanges, tab){
     if(tabChanges.url == null) {
         return;
     }
+    allTabs[tabID].needCheck = true;
+
     chrome.tabs.get(tabID, function (tab) {
         checkIfTabIsCompatible(tab.url, tabID);
         updateAddOnIcon(allTabs[tabID].isCompatible);
