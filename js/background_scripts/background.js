@@ -73,12 +73,24 @@ chrome.runtime.onMessage.addListener(
 
 //Setup Icon Paths
 var notCompatibleIconPath = chrome.runtime.getURL("images/iconNotCompatible.png");
-var CompatibleIconPath = chrome.runtime.getURL("images/icon.png");
+var compatibleIconPath = chrome.runtime.getURL("images/icon.png");
+var activeTabId = -1;
 var allTabs = {}
+
+//Check Tab when Chrome firsts opens.
+chrome.runtime.onStartup.addListener(function(){
+    chrome.tabs.query({active: true, currentWindow: true},function(tabs){
+        activeTabId = tabs[0].id;
+        //Check if Tab is Compatible
+        checkIfTabIsCompatible(tabs[0].url, tabs[0].id);
+        updateAddOnIcon(allTabs[tabs[0].id].isCompatible);
+    });
+});
 
 //Check if the newly Selected Tab is compatible
 chrome.tabs.onActivated.addListener(function(activeInfo){
     chrome.tabs.get(activeInfo.tabId, function (tab) {
+        activeTabId = tab.id;
         //Check if Tab is Compatible
         checkIfTabIsCompatible(tab.url, tab.id);
         updateAddOnIcon(allTabs[tab.id].isCompatible);
@@ -91,11 +103,15 @@ chrome.tabs.onUpdated.addListener(function(tabID, tabChanges, tab){
     if(tabChanges.url == null) {
         return;
     }
-    allTabs[tabID].needCheck = true;
+    if(allTabs[tabID]){
+        allTabs[tabID].needCheck = true;
+    }
 
     chrome.tabs.get(tabID, function (tab) {
         checkIfTabIsCompatible(tab.url, tabID);
-        updateAddOnIcon(allTabs[tabID].isCompatible);
+        if(tabID == activeTabId){
+            updateAddOnIcon(allTabs[tabID].isCompatible);
+        }
     });
 })
 
@@ -122,7 +138,7 @@ function checkIfTabIsCompatible(tabURL, tabID){
 
 function updateAddOnIcon(isCompatible){
     if(isCompatible) {
-        chrome.browserAction.setIcon({path: CompatibleIconPath});
+        chrome.browserAction.setIcon({path: compatibleIconPath});
     } else {
         chrome.browserAction.setIcon({path: notCompatibleIconPath});
     }
